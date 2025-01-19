@@ -1,0 +1,70 @@
+name: Cross-platform build
+
+on:
+  push:
+    tags:
+      - '*' # This will trigger for all tags
+
+jobs:
+  release:
+    name: Release - ${{ matrix.os-name }}
+    strategy:
+      matrix:
+        os-name: [FreeBSD-x86_64, Linux-x86_64, Linux-aarch64, Linux-riscv64, Windows-x86_64, macOS-x86_64]
+        runs-on: [ubuntu-20.04, ubuntu-20.04, ubuntu-20.04, ubuntu-20.04, windows-latest, macos-latest]
+        target: [x86_64-unknown-freebsd, x86_64-unknown-linux-musl, aarch64-unknown-linux-musl, riscv64gc-unknown-linux-gnu, x86_64-pc-windows-msvc, x86_64-apple-darwin]
+        command: [build, build, build, build, build, build]
+        skip_tests: [true, false, false, false, false, false]
+        include:
+          - os-name: FreeBSD-x86_64
+            runs-on: ubuntu-20.04
+            target: x86_64-unknown-freebsd
+            skip_tests: true
+            command: build
+
+          - os-name: Linux-x86_64
+            runs-on: ubuntu-20.04
+            target: x86_64-unknown-linux-musl
+            skip_tests: false
+            command: build
+
+          - os-name: Linux-aarch64
+            runs-on: ubuntu-20.04
+            target: aarch64-unknown-linux-musl
+            skip_tests: false
+            command: build
+
+          - os-name: Linux-riscv64
+            runs-on: ubuntu-20.04
+            target: riscv64gc-unknown-linux-gnu
+            skip_tests: false
+            command: build
+
+          - os-name: Windows-x86_64
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+            skip_tests: false
+            command: build
+
+          - os-name: macOS-x86_64
+            runs-on: macos-latest
+            target: x86_64-apple-darwin
+            skip_tests: false
+            command: build
+
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v1
+        with:
+          command: ${{ matrix.command }}
+          target: ${{ matrix.target }}
+          args: "--locked --release"
+          strip: true
+      - name: Publish artifacts and release
+        uses: houseabsolute/actions-rust-release@v0
+        with:
+          executable-name: ubi
+          target: ${{ matrix.target }}
