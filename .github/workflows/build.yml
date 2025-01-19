@@ -1,9 +1,8 @@
 name: Cross-platform build
 
 on:
-  push:
-    tags:
-      - '*' # This will trigger for all tags
+  release:
+    types: [created]
 
 jobs:
   release:
