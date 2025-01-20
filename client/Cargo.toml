@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.36", features = ["full"] }
 reqwest = { version = "0.12", features = ["json"] }
-base64 = "0.21"
+base64 = "0.22"
 http = "1.2"
 httparse = "1.8"
 serde = { version = "1.0", features = ["derive"] }
