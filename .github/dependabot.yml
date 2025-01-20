@@ -1,0 +1,14 @@
+# .github/dependabot.yml
+version: 2
+updates:
+  # Configuration for the client directory
+  - package-ecosystem: "cargo" # Assuming you're using Rust/Cargo with toml manifests
+    directory: "/client" # Location of the package manifest in the client directory
+    schedule:
+      interval: "weekly"
+
+  # Configuration for the source directory
+  - package-ecosystem: "cargo" # Assuming the same package ecosystem for the source directory
+    directory: "/server" # Location of the package manifest in the source directory
+    schedule:
+      interval: "weekly"
