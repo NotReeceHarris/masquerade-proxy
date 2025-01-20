@@ -1,11 +1,18 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::read::{DeflateDecoder, GzDecoder};
 use reqwest::{header::HeaderMap, header::HeaderName, header::HeaderValue};
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
 use warp::Reply;
-use warp::{filters::body, Filter};
+use warp::Filter;
+use clap::Parser;
+
+#[derive(Parser)]
+struct Cli {
+    #[clap(short = 'p', long = "port", default_value = "3030")]
+    port: u16,
+}
 
 // Structure to receive query parameters
 #[derive(Deserialize)]
@@ -26,14 +33,43 @@ struct ProxyResponse {
 
 #[tokio::main]
 async fn main() {
+
+    let args = Cli::parse();
+
+    let port = args.port;
+
+    /* if let Some(ip) = public_ip::addr().await {
+        
+        println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<  https://{:?}:{}", ip, port);
+    } else {
+        println!("       \x1b[1m\x1b[31m\\\\___//\x1b[32m = | = |\x1b[0m-.(__");
+        println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<");
+    } */
+
+
+    println!("      \x1b[1m\x1b[31m._______.\x1b[0m");
+    println!("      \x1b[1m\x1b[31m| \\   / |\x1b[0m              Masquerade Proxy Server");
+    println!("   .--\x1b[1m\x1b[31m|.O.|.O.|\x1b[32m______.\x1b[0m       v{}", env!("CARGO_PKG_VERSION"));
+    println!("__). -\x1b[1m\x1b[31m| = | = |\x1b[32m/   \\ |\x1b[0m");
+    println!(">__)  \x1b[1m\x1b[31m(.'---`.)\x1b[32mQ.|.Q.|\x1b[0m--.    http://localhost:{}", port); 
+    println!("       \x1b[1m\x1b[31m\\\\___//\x1b[32m = | = |\x1b[0m-.(__  https://localhost:{}", port);
+
+    if let Some(ip) = public_ip::addr().await {
+        println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<  http://{}:{}", ip, port);
+        println!("              \x1b[1m\x1b[32m\\\\.-.//\x1b[0m        https://{}:{}", ip, port);
+    } else {
+        println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<");
+        println!("              \x1b[1m\x1b[32m\\\\.-.//\x1b[0m");
+    }
+    
+    println!("               \x1b[1m\x1b[32m`---'\x1b[0m");
+
     // Create the proxy route
     let proxy = warp::path!("proxy")
         .and(warp::query::<ProxyRequest>())
         .then(handle_proxy);
 
-    println!("Proxy server started at http://localhost:3030");
-
-    warp::serve(proxy).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(proxy).run(([127, 0, 0, 1], port)).await;
 }
 
 async fn handle_proxy(req: ProxyRequest) -> impl Reply {
@@ -52,7 +88,7 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
         }
     };
 
-    let mut headers: HeaderMap = match decode_base64(&req.headers).and_then(|h| {
+    let headers: HeaderMap = match decode_base64(&req.headers).and_then(|h| {
         serde_json::from_str::<HashMap<String, String>>(&h).map_err(|e| e.to_string())
     }) {
         Ok(headers) => {
