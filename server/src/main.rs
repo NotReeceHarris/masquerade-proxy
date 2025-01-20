@@ -7,6 +7,7 @@ use std::io::Read;
 use warp::Reply;
 use warp::Filter;
 use clap::Parser;
+use url::Url;
 
 #[derive(Parser)]
 struct Cli {
@@ -29,6 +30,10 @@ struct ProxyResponse {
     status: u16,
     headers: HashMap<String, String>,
     body: String,
+}
+
+fn validate_url(input: &str) -> bool {
+    Url::parse(input).is_ok()
 }
 
 #[tokio::main]
@@ -63,11 +68,24 @@ async fn main() {
 }
 
 async fn handle_proxy(req: ProxyRequest) -> impl Reply {
-    println!("\n🔄 Received proxy request: {:?}", {req.method.clone()});
 
     // Decode target URL
     let target_url = match decode_base64(&req.target) {
-        Ok(url) => url,
+        Ok(url) => {
+
+            println!("\n🔄 Received proxy request: {:?} @ {}", {req.method.clone()}, url);
+
+            if !validate_url(&url) {
+                println!("❌ Invalid target URL: {}", url);
+                return warp::reply::json(&ProxyResponse {
+                    status: 400,
+                    headers: HashMap::new(),
+                    body: format!("Invalid target URL: {}", url),
+                });
+            }
+
+            url
+        },
         Err(e) => {
             println!("❌ Failed to decode target URL: {}", e);
             return warp::reply::json(&ProxyResponse {
@@ -152,21 +170,44 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
         }
     };
 
+    let mut headers = resp.headers().clone();
     let content_encoding = resp.headers().get(reqwest::header::CONTENT_ENCODING);
-
     let mut decompressed_data = Vec::new();
 
     match content_encoding.and_then(|v| v.to_str().ok()) {
         Some("gzip") => {
+
+            headers.remove(reqwest::header::CONTENT_ENCODING);
+            headers.remove(reqwest::header::TRANSFER_ENCODING);
+
+
             // The response is gzip-compressed, so decode it accordingly
             let compressed_data = resp.bytes().await.unwrap();
             let mut decoder = GzDecoder::new(&compressed_data[..]);
+
+            // add content_length to headers
+            headers.insert(
+                reqwest::header::CONTENT_LENGTH,
+                HeaderValue::from_str(&compressed_data.len().to_string()).unwrap(),
+            );
+
             decoder.read_to_end(&mut decompressed_data).unwrap();
         }
         Some("deflate") => {
+
+            headers.remove(reqwest::header::CONTENT_ENCODING);
+            headers.remove(reqwest::header::TRANSFER_ENCODING);
+
             // The response is deflate-compressed, so decode it accordingly
             let compressed_data = resp.bytes().await.unwrap();
             let mut decoder = DeflateDecoder::new(&compressed_data[..]);
+
+            // add content_length to headers
+            headers.insert(
+                reqwest::header::CONTENT_LENGTH,
+                HeaderValue::from_str(&compressed_data.len().to_string()).unwrap(),
+            );
+
             decoder.read_to_end(&mut decompressed_data).unwrap();
         }
         _ => {
