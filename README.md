@@ -4,6 +4,7 @@ A stealthy HTTP proxy designed to conceal HTTP activity and disguise it as munda
 
 ![Testing Status](https://img.shields.io/github/actions/workflow/status/NotReeceHarris/masquerade-proxy/test.yml?style=flat-square&label=Testing)
 ![CodeQL Status](https://img.shields.io/github/actions/workflow/status/NotReeceHarris/masquerade-proxy/github-code-scanning%2Fcodeql?style=flat-square&label=CodeQL)
+![Out-dated dependencies](https://img.shields.io/github/issues-pr/NotReeceHarris/masquerade-proxy/dependencies?style=flat-square&label=Out-dated%20dependencies)
 
 
 <details>
