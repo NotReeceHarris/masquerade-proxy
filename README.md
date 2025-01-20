@@ -12,6 +12,8 @@ A masquerade proxy is a concept designed to disguise your requests as something 
 
 Additionally, a key purpose of a masquerade proxy is to conceal its very nature as a proxy. By appearing as legitimate, non-proxy traffic, it reduces the likelihood of being detected or blocked by network administrators or automated filters.
 
+<br>
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/traffic-diagram@dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/traffic-diagram@light.svg">
