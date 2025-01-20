@@ -6,6 +6,9 @@ A stealthy HTTP proxy designed to conceal HTTP activity and disguise it as munda
 ![CodeQL Status](https://img.shields.io/github/actions/workflow/status/NotReeceHarris/masquerade-proxy/github-code-scanning%2Fcodeql?style=flat-square&label=CodeQL)
 ![Out-dated dependencies](https://img.shields.io/github/issues-pr/NotReeceHarris/masquerade-proxy/dependencies?style=flat-square&label=Out-dated%20dependencies)
 
+## What is masquerade proxy
+
+Masquerade proxy is a concept of disguising your requests as something "boring" using steganography so that "spys" (ISP's, Goverment, Sniffers, Netowkr managers)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/traffic-diagram@dark.svg">
