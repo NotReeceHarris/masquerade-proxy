@@ -1,16 +1,16 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::read::{DeflateDecoder, GzDecoder};
 use reqwest::{header::HeaderMap, header::HeaderName, header::HeaderValue};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
 use warp::Reply;
 use warp::Filter;
-use clap::Parser;
 use url::Url;
+use clap::Parser;
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
-struct Cli {
+pub struct Cli {
     #[clap(short = 'p', long = "port", default_value = "3030")]
     port: u16,
 }
@@ -30,10 +30,6 @@ struct ProxyResponse {
     status: u16,
     headers: HashMap<String, String>,
     body: String,
-}
-
-fn validate_url(input: &str) -> bool {
-    Url::parse(input).is_ok()
 }
 
 #[tokio::main]
@@ -60,9 +56,7 @@ async fn main() {
     println!("               \x1b[1m\x1b[32m`---'\x1b[0m");
 
     // Create the proxy route
-    let proxy = warp::path!("proxy")
-        .and(warp::query::<ProxyRequest>())
-        .then(handle_proxy);
+    let proxy = warp::path!("proxy").and(warp::query::<ProxyRequest>()).then(handle_proxy);
 
     warp::serve(proxy).run(([127, 0, 0, 1], port)).await;
 }
@@ -231,6 +225,10 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
             .collect(),
         body: base64_body,
     })
+}
+
+fn validate_url(input: &str) -> bool {
+    Url::parse(input).is_ok()
 }
 
 fn decode_base64(input: &str) -> Result<String, String> {
