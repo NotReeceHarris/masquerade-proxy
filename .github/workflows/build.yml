@@ -16,6 +16,7 @@ jobs:
       - name: Compile and release
         uses: rust-build/rust-build.action@v1.4.5
         env:
+          SRC_DIR: "target/release/client"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           RUSTTARGET: ${{ matrix.target }}
