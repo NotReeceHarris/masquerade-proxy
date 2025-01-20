@@ -35,17 +35,7 @@ struct ProxyResponse {
 async fn main() {
 
     let args = Cli::parse();
-
     let port = args.port;
-
-    /* if let Some(ip) = public_ip::addr().await {
-        
-        println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<  https://{:?}:{}", ip, port);
-    } else {
-        println!("       \x1b[1m\x1b[31m\\\\___//\x1b[32m = | = |\x1b[0m-.(__");
-        println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<");
-    } */
-
 
     println!("      \x1b[1m\x1b[31m._______.\x1b[0m");
     println!("      \x1b[1m\x1b[31m| \\   / |\x1b[0m              Masquerade Proxy Server");
