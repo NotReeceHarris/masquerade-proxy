@@ -1,8 +1,7 @@
 use reqwest::{header::HeaderMap, header::HeaderName, header::HeaderValue};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::read::{DeflateDecoder, GzDecoder};
-use tokio::time::{Instant, Duration};
-use serde::{Deserialize, Serialize};
+use tokio::time::{Instant, Duration, timeout};
 use std::collections::HashMap;
 use std::io::Read;
 use warp::Filter;
@@ -142,33 +141,21 @@ async fn handle_proxy(req: ProxyRequest, client: reqwest::Client) -> impl Reply 
     let body = decode_base64(&req.body.unwrap_or_default()).unwrap_or_default();
     let start_time = Instant::now();
 
-    let resp = match req.method.as_str() {
+    let request = match req.method.as_str() {
         "GET" => client
             .get(&target_url)
-            .headers(headers.clone())
-            .send()
-            .await
-            .unwrap(),
+            .headers(headers.clone()),
         "POST" => client
             .post(&target_url)
             .headers(headers.clone())
-            .body(body)
-            .send()
-            .await
-            .unwrap(),
+            .body(body),
         "PUT" => client
             .put(&target_url)
             .headers(headers.clone())
-            .body(body)
-            .send()
-            .await
-            .unwrap(),
+            .body(body),
         "DELETE" => client
             .delete(&target_url)
-            .headers(headers.clone())
-            .send()
-            .await
-            .unwrap(),
+            .headers(headers.clone()),
         _ => {
             println!("❌ Unsupported method: {}", req.method);
             return warp::reply::json(&ProxyResponse {
@@ -179,30 +166,53 @@ async fn handle_proxy(req: ProxyRequest, client: reqwest::Client) -> impl Reply 
         }
     };
 
+    let response = match timeout(
+        Duration::from_secs(REQUEST_TIMEOUT), // REQUEST_TIMEOUT should be defined as a constant
+        request.send()
+    ).await {
+        Ok(Ok(response)) => response,  // Request completed successfully
+        Ok(Err(e)) => {  // Request failed (e.g. network error)
+            println!("❌ Request failed: {}", e);
+            return warp::reply::json(&ProxyResponse {
+                status: 500,
+                headers: HashMap::new(),
+                body: format!("Request failed: {}", e),
+            });
+        },
+        Err(_) => {  // Timeout occurred
+            println!("❌ Request timed out");
+            return warp::reply::json(&ProxyResponse {
+                status: 504,  // Gateway Timeout
+                headers: HashMap::new(),
+                body: "Request timed out".to_string(),
+            });
+        }
+    };
+
     println!(
         "🕒 Request completed in {:.2}s",
         start_time.elapsed().as_secs_f64()
     );
 
     // Handle response headers and body decompression
-    let mut headers = resp.headers().clone();
-    let content_encoding = resp.headers().get(reqwest::header::CONTENT_ENCODING);
+    let mut headers = response.headers().clone();
+    let content_encoding = response.headers().get(reqwest::header::CONTENT_ENCODING);
     let mut decompressed_data = Vec::new();
 
     // Handle different content encoding types (gzip, deflate)
     match content_encoding.and_then(|v| v.to_str().ok()) {
         Some("gzip") => {
-            let compressed_data = resp.bytes().await.unwrap();
+            let compressed_data = response.bytes().await.unwrap();
             let mut decoder = GzDecoder::new(&compressed_data[..]);
             decoder.read_to_end(&mut decompressed_data).unwrap();
         }
         Some("deflate") => {
-            let compressed_data = resp.bytes().await.unwrap();
+            let compressed_data = response.bytes().await.unwrap();
             let mut decoder = DeflateDecoder::new(&compressed_data[..]);
             decoder.read_to_end(&mut decompressed_data).unwrap();
         }
         _ => {
-            decompressed_data = resp.bytes().await.unwrap().to_vec();
+            decompressed_data = response.bytes().await.unwrap().to_vec();
         }
     }
 

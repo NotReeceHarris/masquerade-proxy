@@ -1,3 +1,6 @@
+> [!NOTE]  
+> This is a concept I want to develop into a viable project. It is my first Rust project and my first proxy, so there will likely be many bugs, changes, reverts, and general confusion until I figure things out. All help and support are greatly appreciated.
+
 # 🎭 Masquerade Proxy
 
 A stealthy HTTP proxy designed to conceal HTTP activity and disguise it as mundane traffic through steganography, encryption, and polymorphism. -- Crafted for masking HTTP activity as regular "uninteresting" traffic to mislead analysts, ISPs, sniffers, network loggers, and more. 

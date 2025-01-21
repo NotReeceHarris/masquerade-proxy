@@ -65,15 +65,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         let target_url = req.path.unwrap_or("/");
                         
                         println!("\n🌐 {} {} HTTP/1.1", method, target_url);
-                        println!("Headers:");
-                        
+
                         // Create header map once and reuse it
                         let mut header_map = HashMap::new();
                         for header in req.headers {
-                            println!("   {}: {}", 
-                                header.name, 
-                                String::from_utf8_lossy(header.value)
-                            );
                             header_map.insert(
                                 header.name.to_string(),
                                 String::from_utf8_lossy(header.value).to_string()
@@ -168,7 +163,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     decoded_status.as_u16(),
                                     decoded_status.canonical_reason().unwrap_or("")
                                 );
-                                
+
                                 let _ = stream.write_all(status_line.as_bytes()).await;
                                 let _ = stream.write_all(decoded_headers.as_bytes()).await;
                                 let _ = stream.write_all(b"\r\n").await;
