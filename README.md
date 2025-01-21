@@ -24,4 +24,8 @@ Additionally, a key purpose of a masquerade proxy is to conceal its very nature 
 ## How does the steganography work?
 
 
-![](https://raw.githubusercontent.com/NotReeceHarris/NotReeceHarris/refs/heads/main/cdn/steganography-diagram.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/steganography-diagram@dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/steganography-diagram@light.svg">
+  <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="docs/steganography-diagram.svg">
+</picture>
