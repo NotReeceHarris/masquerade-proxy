@@ -1,43 +1,23 @@
+use reqwest::{header::HeaderMap, header::HeaderName, header::HeaderValue};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::read::{DeflateDecoder, GzDecoder};
-use reqwest::{header::HeaderMap, header::HeaderName, header::HeaderValue};
+use tokio::time::{Instant, Duration};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Read;
-use warp::Reply;
 use warp::Filter;
-use url::Url;
 use clap::Parser;
-use serde::{Deserialize, Serialize};
+use warp::Reply;
+use url::Url;
 
-#[derive(Parser)]
-pub struct Cli {
-    #[clap(short = 'p', long = "port", default_value = "3030")]
-    port: u16,
-}
+mod structs;
+use structs::{Cli, ProxyRequest, ProxyResponse};
 
-// Structure to receive query parameters
-#[derive(Deserialize)]
-struct ProxyRequest {
-    target: String,
-    method: String,
-    headers: String,
-    body: Option<String>,
-}
+const REQUEST_TIMEOUT: u64 = 30; // Request timeout in seconds
+const MAX_BODY_SIZE: usize = 10 * 1024 * 1024; // 10MB max body size
+const MAX_RETRIES: u32 = 3; // Maximum number of retries
 
-// Structure to send response back
-#[derive(Serialize)]
-struct ProxyResponse {
-    status: u16,
-    headers: HashMap<String, String>,
-    body: String,
-}
-
-#[tokio::main]
-async fn main() {
-
-    let args = Cli::parse();
-    let port = args.port;
-
+async fn display_banner(port: u16) {
     println!("      \x1b[1m\x1b[31m._______.\x1b[0m");
     println!("      \x1b[1m\x1b[31m| \\   / |\x1b[0m              Masquerade Proxy Server");
     println!("   .--\x1b[1m\x1b[31m|.O.|.O.|\x1b[32m______.\x1b[0m       v{}", env!("CARGO_PKG_VERSION"));
@@ -45,6 +25,7 @@ async fn main() {
     println!(">__)  \x1b[1m\x1b[31m(.'---`.)\x1b[32mQ.|.Q.|\x1b[0m--.    http://localhost:{}", port); 
     println!("       \x1b[1m\x1b[31m\\\\___//\x1b[32m = | = |\x1b[0m-.(__  https://localhost:{}", port);
 
+    // Try to get and display public IP address if available
     if let Some(ip) = public_ip::addr().await {
         println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<  http://{}:{}", ip, port);
         println!("              \x1b[1m\x1b[32m\\\\.-.//\x1b[0m        https://{}:{}", ip, port);
@@ -52,24 +33,52 @@ async fn main() {
         println!("        \x1b[1m\x1b[31m`---'\x1b[32m( .---. )\x1b[0m (__<");
         println!("              \x1b[1m\x1b[32m\\\\.-.//\x1b[0m");
     }
-    
-    println!("               \x1b[1m\x1b[32m`---'\x1b[0m");
 
-    // Create the proxy route
-    let proxy = warp::path!("proxy").and(warp::query::<ProxyRequest>()).then(handle_proxy);
+    println!("               \x1b[1m\x1b[32m`---'\x1b[0m");
+}
+
+#[tokio::main]
+async fn main() {
+    // Parse command line arguments
+    let args = Cli::parse();
+    let port = args.port;
+
+    // Display ASCII art banner with server information
+    display_banner(port).await;
+
+    let client = create_client(REQUEST_TIMEOUT);
+
+    // Set up the proxy route and start the server
+    let proxy = warp::path!("proxy")
+        .and(warp::query::<ProxyRequest>())
+        .and(warp::any().map(move || client.clone()))
+        .then(handle_proxy)
+        .with(warp::cors().allow_any_origin())
+        .with(warp::compression::gzip());
 
     warp::serve(proxy).run(([127, 0, 0, 1], port)).await;
 }
 
-async fn handle_proxy(req: ProxyRequest) -> impl Reply {
+/// Create a configured reqwest client
+fn create_client(timeout_seconds: u64) -> reqwest::Client {
+    reqwest::ClientBuilder::new()
+        .timeout(Duration::from_secs(timeout_seconds))
+        .pool_idle_timeout(Duration::from_secs(30))
+        .pool_max_idle_per_host(32)
+        .tcp_keepalive(Duration::from_secs(60))
+        .build()
+        .expect("Failed to create HTTP client")
+}
 
-    // Decode target URL
+/// Main proxy request handler
+async fn handle_proxy(req: ProxyRequest, client: reqwest::Client) -> impl Reply {
+
+    // Decode and validate the target URL
     let target_url = match decode_base64(&req.target) {
         Ok(url) => {
+            println!("🔄 Received proxy request: {:?} \n🎯 {}", {req.method.clone()}, url);
 
-            println!("\n🔄 Received proxy request: {:?} @ {}", {req.method.clone()}, url);
-
-            if !validate_url(&url) {
+            if !Url::parse(&url).is_ok() {
                 println!("❌ Invalid target URL: {}", url);
                 return warp::reply::json(&ProxyResponse {
                     status: 400,
@@ -77,7 +86,6 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
                     body: format!("Invalid target URL: {}", url),
                 });
             }
-
             url
         },
         Err(e) => {
@@ -90,11 +98,13 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
         }
     };
 
-    let headers: HeaderMap = match decode_base64(&req.headers).and_then(|h| {
+    // Decode and parse headers from base64 JSON string
+    let mut headers: HeaderMap = match decode_base64(&req.headers).and_then(|h| {
         serde_json::from_str::<HashMap<String, String>>(&h).map_err(|e| e.to_string())
     }) {
         Ok(headers) => {
             let mut header_map = HeaderMap::new();
+            // Convert each header key-value pair into proper HeaderName and HeaderValue types
             for (key, value) in headers {
                 if let Ok(name) = HeaderName::from_bytes(key.as_bytes()) {
                     if let Ok(value) = HeaderValue::from_str(&value) {
@@ -118,8 +128,19 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
         }
     };
 
-    // Use the client with headers to make the request
-    let client = reqwest::Client::builder().build().unwrap();
+    headers.remove(reqwest::header::HOST);
+    headers.remove(reqwest::header::CONNECTION);
+    headers.remove(reqwest::header::CACHE_CONTROL);
+
+    headers.insert(
+        reqwest::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-cache"),
+    );
+
+    // Create HTTP client and handle request based on method
+    
+    let body = decode_base64(&req.body.unwrap_or_default()).unwrap_or_default();
+    let start_time = Instant::now();
 
     let resp = match req.method.as_str() {
         "GET" => client
@@ -128,26 +149,20 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
             .send()
             .await
             .unwrap(),
-        "POST" => {
-            let body = decode_base64(&req.body.unwrap_or_default()).unwrap_or_default();
-            client
-                .post(&target_url)
-                .headers(headers.clone())
-                .body(body)
-                .send()
-                .await
-                .unwrap()
-        }
-        "PUT" => {
-            let body = req.body.unwrap_or_default();
-            client
-                .put(&target_url)
-                .headers(headers.clone())
-                .body(body)
-                .send()
-                .await
-                .unwrap()
-        }
+        "POST" => client
+            .post(&target_url)
+            .headers(headers.clone())
+            .body(body)
+            .send()
+            .await
+            .unwrap(),
+        "PUT" => client
+            .put(&target_url)
+            .headers(headers.clone())
+            .body(body)
+            .send()
+            .await
+            .unwrap(),
         "DELETE" => client
             .delete(&target_url)
             .headers(headers.clone())
@@ -164,44 +179,26 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
         }
     };
 
+    println!(
+        "🕒 Request completed in {:.2}s",
+        start_time.elapsed().as_secs_f64()
+    );
+
+    // Handle response headers and body decompression
     let mut headers = resp.headers().clone();
     let content_encoding = resp.headers().get(reqwest::header::CONTENT_ENCODING);
     let mut decompressed_data = Vec::new();
 
+    // Handle different content encoding types (gzip, deflate)
     match content_encoding.and_then(|v| v.to_str().ok()) {
         Some("gzip") => {
-
-            headers.remove(reqwest::header::CONTENT_ENCODING);
-            headers.remove(reqwest::header::TRANSFER_ENCODING);
-
-
-            // The response is gzip-compressed, so decode it accordingly
             let compressed_data = resp.bytes().await.unwrap();
             let mut decoder = GzDecoder::new(&compressed_data[..]);
-
-            // add content_length to headers
-            headers.insert(
-                reqwest::header::CONTENT_LENGTH,
-                HeaderValue::from_str(&compressed_data.len().to_string()).unwrap(),
-            );
-
             decoder.read_to_end(&mut decompressed_data).unwrap();
         }
         Some("deflate") => {
-
-            headers.remove(reqwest::header::CONTENT_ENCODING);
-            headers.remove(reqwest::header::TRANSFER_ENCODING);
-
-            // The response is deflate-compressed, so decode it accordingly
             let compressed_data = resp.bytes().await.unwrap();
             let mut decoder = DeflateDecoder::new(&compressed_data[..]);
-
-            // add content_length to headers
-            headers.insert(
-                reqwest::header::CONTENT_LENGTH,
-                HeaderValue::from_str(&compressed_data.len().to_string()).unwrap(),
-            );
-
             decoder.read_to_end(&mut decompressed_data).unwrap();
         }
         _ => {
@@ -209,28 +206,26 @@ async fn handle_proxy(req: ProxyRequest) -> impl Reply {
         }
     }
 
-    // Encode body to base64
+    // Clean up response headers
+    headers.remove(reqwest::header::CONTENT_ENCODING);
+    headers.remove(reqwest::header::TRANSFER_ENCODING);
+    headers.insert(
+        reqwest::header::CONTENT_LENGTH,
+        HeaderValue::from_str(&decompressed_data.clone().len().to_string()).unwrap(),
+    );
+
+    // Encode response body to base64 and return
     let base64_body = BASE64.encode(&decompressed_data);
+    let headers = headers.iter().map(|(k, v)| {(k.as_str().to_string(),v.to_str().unwrap_or_default().to_string(),)}).collect();
 
     warp::reply::json(&ProxyResponse {
-        status: 200, // Use the stored status
-        headers: headers
-            .iter()
-            .map(|(k, v)| {
-                (
-                    k.as_str().to_string(),
-                    v.to_str().unwrap_or_default().to_string(),
-                )
-            })
-            .collect(),
+        status: 200,
+        headers: headers,
         body: base64_body,
     })
 }
 
-fn validate_url(input: &str) -> bool {
-    Url::parse(input).is_ok()
-}
-
+/// Decodes a base64 string into a UTF-8 string
 fn decode_base64(input: &str) -> Result<String, String> {
     BASE64
         .decode(input)

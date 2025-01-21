@@ -1,9 +1,11 @@
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use flate2::read::{DeflateDecoder, GzDecoder};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use reqwest::Client;
 use httparse::Request as HttpParseRequest;
 use serde_json::json;
+use std::io::Read;
 use std::collections::HashMap;
 use std::error::Error;
 use serde::Deserialize;
@@ -118,6 +120,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         // Forward request to proxy server
                         match client.get(&proxy_url).send().await {
                             Ok(proxy_response) => {
+
                                 let status = proxy_response.status();
                                 println!("📥 Proxy response: {} {}", 
                                     status.as_u16(), 
@@ -135,26 +138,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
                                     })
                                     .collect();
 
-                                if let Ok(body) = proxy_response.bytes().await {
-
-                                    let decoded = serde_json::from_slice::<ProxyResponse>(&body).unwrap();
-                                    let decoded_status = http::StatusCode::from_u16(decoded.status).unwrap();
-                                    let decoded_headers = decoded.headers.iter().map(|(k, v)| format!("{}: {}\r\n", k, v)).collect::<String>();
-                                    let decoded_body = BASE64.decode(&decoded.body).unwrap();
-
-                                    println!("📦 Response body size: {} bytes", body.len());
-                                    println!("{}", decoded_headers);
-
-                                    let status_line = format!(
-                                        "HTTP/1.1 {} {}\r\n",
-                                        decoded_status.as_u16(),
-                                        decoded_status.canonical_reason().unwrap_or("")
-                                    );
-                                    let _ = stream.write_all(status_line.as_bytes()).await;
-                                    let _ = stream.write_all(decoded_headers.as_bytes()).await;
-                                    let _ = stream.write_all(b"\r\n").await;
-                                    let _ = stream.write_all(&decoded_body).await;
+                                let content_encoding = proxy_response.headers().get(reqwest::header::CONTENT_ENCODING);
+                                let mut decompressed_data = Vec::new();
+                            
+                                // Handle different content encoding types (gzip, deflate)
+                                match content_encoding.and_then(|v| v.to_str().ok()) {
+                                    Some("gzip") => {
+                                        let compressed_data = proxy_response.bytes().await.unwrap();
+                                        let mut decoder = GzDecoder::new(&compressed_data[..]);
+                                        decoder.read_to_end(&mut decompressed_data).unwrap();
+                                    }
+                                    Some("deflate") => {
+                                        let compressed_data = proxy_response.bytes().await.unwrap();
+                                        let mut decoder = DeflateDecoder::new(&compressed_data[..]);
+                                        decoder.read_to_end(&mut decompressed_data).unwrap();
+                                    }
+                                    _ => {
+                                        decompressed_data = proxy_response.bytes().await.unwrap().to_vec();
+                                    }
                                 }
+
+                                let decoded = serde_json::from_slice::<ProxyResponse>(&decompressed_data).unwrap();
+                                let decoded_status = http::StatusCode::from_u16(decoded.status).unwrap();
+                                let decoded_headers = decoded.headers.iter().map(|(k, v)| format!("{}: {}\r\n", k, v)).collect::<String>();
+                                let decoded_body = BASE64.decode(&decoded.body).unwrap();
+
+                                let status_line = format!(
+                                    "HTTP/1.1 {} {}\r\n",
+                                    decoded_status.as_u16(),
+                                    decoded_status.canonical_reason().unwrap_or("")
+                                );
+                                
+                                let _ = stream.write_all(status_line.as_bytes()).await;
+                                let _ = stream.write_all(decoded_headers.as_bytes()).await;
+                                let _ = stream.write_all(b"\r\n").await;
+                                let _ = stream.write_all(&decoded_body).await;
                                 
                             }
                             Err(e) => {

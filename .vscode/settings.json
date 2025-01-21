@@ -2,6 +2,7 @@
     "cSpell.words": [
         "flate",
         "httparse",
+        "keepalive",
         "pnet",
         "reqwest",
         "serde"
