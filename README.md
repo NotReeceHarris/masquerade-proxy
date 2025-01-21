@@ -23,9 +23,13 @@ Additionally, a key purpose of a masquerade proxy is to conceal its very nature 
 
 ## How does the steganography work?
 
+<a href="https://excalidraw.com/#json=hz1rK29Uoz2vCY3fhnqt8,RyZNYhcuyO7fL2iChbreQA">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/steganography-diagram@dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/steganography-diagram@light.svg">
+    <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="docs/steganography-diagram.svg">
+  </picture>
+</a>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/steganography-diagram@dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/steganography-diagram@light.svg">
-  <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="docs/steganography-diagram.svg">
-</picture>
+<sub><a href="https://excalidraw.com/#json=hz1rK29Uoz2vCY3fhnqt8,RyZNYhcuyO7fL2iChbreQA">https://excalidraw.com/#json=hz1rK29Uoz2vCY3fhnqt8,RyZNYhcuyO7fL2iChbreQA</a></sub>
+
